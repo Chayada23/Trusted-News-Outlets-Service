@@ -1,0 +1,26 @@
+{
+  "incident_id": { "S": "INC9921" },
+  "incident_type": { "S": "fire" },
+  "severity": { "S": "high" },
+  "status": { "S": "in progress" },
+  "location": {
+    "M": {
+      "type": { "S": "Point" },
+      "coordinates": {
+        "L": [
+          { "N": "100.5231" },
+          { "N": "13.7367" }
+        ]
+      }
+    }
+  },
+  "address_name": { "S": "Siam Square Soi 3, Pathum Wan, Bangkok" },
+  "incident_start": { "S": "2026-03-03T10:15:00+07:00" },
+  "ended_time": { "NULL": true },
+  "description": {
+    "S": "เกิดเหตุไฟไหม้ในอาคารพาณิชย์บริเวณสยามสแควร์ ขณะนี้เจ้าหน้าที่ดับเพลิงกำลังอยู่ในที่เกิดเหตุเพื่อควบคุมสถานการณ์และป้องกันไม่ให้ไฟลุกลามต่อไป สามารถเห็นควันได้จากระยะไกล"
+  },
+  "reporter_id": { "S": "CIT55667" },
+  "created_at": { "S": "2026-03-03T10:20:00+07:00" },
+  "updated_at": { "S": "2026-03-03T10:45:00+07:00" }
+}
