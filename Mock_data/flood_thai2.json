@@ -1,0 +1,26 @@
+{
+  "incident_id": { "S": "INC8899" },
+  "incident_type": { "S": "flood" },
+  "severity": { "S": "high" },
+  "status": { "S": "in progress" },
+  "location": {
+    "M": {
+      "type": { "S": "Point" },
+      "coordinates": {
+        "L": [
+          { "N": "100.5018" },
+          { "N": "13.7563" }
+        ]
+      }
+    }
+  },
+  "address_name": { "S": "Ratchadaphisek Road, Din Daeng, Bangkok" },
+  "incident_start": { "S": "2026-03-02T14:30:00+07:00" },
+  "ended_time": { "NULL": true },
+  "description": {
+    "S": "พื้นที่หลายแห่งเผชิญฝนตกหนักจนเกิดน้ำท่วมขัง ทำให้รถสัญจรลำบาก ขณะนี้หน่วยงานที่เกี่ยวข้องกำลังเร่งระบายน้ำและช่วยเหลือประชาชนในพื้นที่ประสบภัยอยู่"
+  },
+  "reporter_id": { "S": "CIT12345" },
+  "created_at": { "S": "2026-03-01T20:20:00+07:00" },
+  "updated_at": { "S": "2026-03-03T18:45:00+07:00" }
+}
