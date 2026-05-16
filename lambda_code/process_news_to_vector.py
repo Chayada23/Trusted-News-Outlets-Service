@@ -170,7 +170,6 @@ def route(result):
     # ---------------- VERIFIED ----------------
     if status == "verified":
         if not reporter:
-            
             status = "rejected"
             payload = {
                 "incident_id": result["incident_id"],
@@ -180,7 +179,7 @@ def route(result):
             }
             topic = SNS_REJECTED
         else:
-            payload = dict(reporter)  # copy ไม่ mutate
+            payload = dict(reporter)
             payload["status"] = "verified"
             payload["updated_at"] = now
             payload["operatorId"] = OPERATOR_ID
@@ -205,7 +204,8 @@ def route(result):
 
     delete_scraping(result["incident_id"])
 
-    if status == "verified" and reporter:
+    # delete reporter both if verified or rejected (only if matched)
+    if reporter:
         delete_reporter(reporter["incident_id"])
 
     return payload
