@@ -6,7 +6,7 @@ from decimal import Decimal
 from datetime import datetime
 
 # =========================================================
-# AWS
+# AWS CLIENTS
 # =========================================================
 
 dynamodb = boto3.resource("dynamodb")
@@ -22,17 +22,16 @@ SNS_REJECTED = "arn:aws:sns:us-east-1:767398101278:status-changed-rejected-topic
 THRESHOLD = 0.15
 OPERATOR_ID = "Trusted_News_Outlets_Service"
 
-
 # =========================================================
 # VECTOR
 # =========================================================
 
 def simple_vector(text):
     words = re.findall(r'[\w\u0E00-\u0E7F]+', text.lower())
-    vector = {}
+    vec = {}
     for w in words:
-        vector[w] = vector.get(w, 0) + 1
-    return vector
+        vec[w] = vec.get(w, 0) + 1
+    return vec
 
 
 def cosine(v1, v2):
@@ -48,9 +47,8 @@ def cosine(v1, v2):
 
     return dot / (mag1 * mag2)
 
-
 # =========================================================
-# FETCH REPORTERS
+# FETCH REPORTERS (REFERENCE DATA)
 # =========================================================
 
 def fetch_reporters():
@@ -65,7 +63,6 @@ def fetch_reporters():
         items.extend(response.get("Items", []))
 
     return items
-
 
 # =========================================================
 # TEXT MAPPING
@@ -88,24 +85,19 @@ def get_scraping_text(item):
         location_text
     ])
 
-
 # =========================================================
-# SCRAPING PARSER
+# PARSE SQS SCRAPING EVENT
 # =========================================================
 
 def parse_scraping_item(data):
     return {
         "incident_id": data.get("incident_id", ""),
-        "created_at": data.get("created_at", ""),
         "description": data.get("description", ""),
-        "incident_start": data.get("incident_start", ""),
         "incident_type": data.get("incident_type", ""),
         "location_id": data.get("location_id", []),
         "severity": data.get("severity", ""),
-        "status": data.get("status", ""),
-        "reporter_id": data.get("reporter_id", "")
+        "status": data.get("status", "")
     }
-
 
 # =========================================================
 # MATCHING
@@ -113,20 +105,19 @@ def parse_scraping_item(data):
 
 def match(scraping_item, reporter_items):
 
-    scraping_vector = simple_vector(get_scraping_text(scraping_item))
+    s_vec = simple_vector(get_scraping_text(scraping_item))
 
     best_score = -1
     best_match = None
 
-    for reporter in reporter_items:
+    for r in reporter_items:
 
-        reporter_vector = simple_vector(get_reporter_text(reporter))
-
-        score = cosine(scraping_vector, reporter_vector)
+        r_vec = simple_vector(get_reporter_text(r))
+        score = cosine(s_vec, r_vec)
 
         if score > best_score:
             best_score = score
-            best_match = reporter
+            best_match = r
 
     return {
         "incident_id": scraping_item["incident_id"],
@@ -134,38 +125,41 @@ def match(scraping_item, reporter_items):
         "reporter": best_match
     }
 
-
 # =========================================================
-# SAVE SUMMARY
-# =========================================================
-
-def save_result(result, status):
-
-    SUMMARY_TABLE.put_item(
-        Item={
-            "incident_id": result["incident_id"],
-            "match_id": result["match_id"],
-            "score": Decimal(str(result["score"])),
-            "status": status,
-            "matched_text": result["matched_text"],
-            "created_at": datetime.utcnow().isoformat(),
-            "operatorId": OPERATOR_ID
-        }
-    )
-
-
-# =========================================================
-# DELETE SCRAPING
+# DELETE FUNCTIONS (IMPORTANT)
 # =========================================================
 
-def delete_scraping_news(incident_id):
+def delete_scraping(incident_id):
     SCRAPING_TABLE.delete_item(
         Key={"incident_id": incident_id}
     )
 
 
+def delete_reporter(incident_id):
+    REPORTER_TABLE.delete_item(
+        Key={"incident_id": incident_id}
+    )
+
 # =========================================================
-# ROUTER (FINAL FIX)
+# SAVE SUMMARY
+# =========================================================
+
+def save_result(result, status, reporter):
+
+    SUMMARY_TABLE.put_item(
+        Item={
+            "incident_id": result["incident_id"],
+            "match_id": reporter["incident_id"] if reporter else "NO_MATCH",
+            "score": Decimal(str(result["score"])),
+            "status": status,
+            "matched_text": get_reporter_text(reporter) if reporter else "",
+            "created_at": datetime.utcnow().isoformat(),
+            "operatorId": OPERATOR_ID
+        }
+    )
+
+# =========================================================
+# ROUTE SNS + DELETE BOTH
 # =========================================================
 
 def route(result):
@@ -173,31 +167,23 @@ def route(result):
     status = "verified" if result["score"] >= THRESHOLD else "rejected"
     now = datetime.utcnow().isoformat()
 
-    # =====================================================
-    # VERIFIED → ส่ง reporter record เป็น payload หลัก
-    # =====================================================
+    reporter = result["reporter"]
+
+    # ---------------- VERIFIED ----------------
     if status == "verified":
-
-        payload = result["reporter"]
-
+        payload = reporter or {}
         payload["status"] = "verified"
         payload["updated_at"] = now
-        #payload["score"] = result["score"]
         payload["operatorId"] = OPERATOR_ID
-
         topic = SNS_VERIFIED
 
-    # =====================================================
-    # REJECTED → ส่งแค่ minimal info ตามที่คุณต้องการ
-    # =====================================================
+    # ---------------- REJECTED ----------------
     else:
-
         payload = {
-            "operatorId": OPERATOR_ID,
             "status": "rejected",
-            "updated_at": now
+            "updated_at": now,
+            "operatorId": OPERATOR_ID
         }
-
         topic = SNS_REJECTED
 
     sns.publish(
@@ -205,43 +191,38 @@ def route(result):
         Message=json.dumps(payload, default=str)
     )
 
-    save_result(
-        {
-            "incident_id": result["incident_id"],
-            "match_id": result["reporter"]["incident_id"] if result["reporter"] else "NO_MATCH",
-            "score": result["score"],
-            "matched_text": get_reporter_text(result["reporter"]) if result["reporter"] else ""
-        },
-        status
-    )
+    save_result(result, status, reporter)
 
-    delete_scraping_news(result["incident_id"])
+    # =====================================================
+    # DELETE BOTH (ตาม requirement คุณ)
+    # =====================================================
+    delete_scraping(result["incident_id"])
+
+    if reporter:
+        delete_reporter(reporter["incident_id"])
 
     return payload
 
-
 # =========================================================
-# HANDLER
+# LAMBDA HANDLER (SQS ONLY)
 # =========================================================
 
 def lambda_handler(event, context):
 
     reporter_items = fetch_reporters()
 
-    results = []
+    responses = []
 
     for record in event["Records"]:
 
         scraping_raw = json.loads(record["body"])
         scraping_item = parse_scraping_item(scraping_raw)
 
-        matched = match(scraping_item, reporter_items)
+        result = match(scraping_item, reporter_items)
 
-        routed = route(matched)
-
-        results.append(routed)
+        responses.append(route(result))
 
     return {
         "statusCode": 200,
-        "body": json.dumps(results, default=str)
+        "body": json.dumps(responses, default=str)
     }
