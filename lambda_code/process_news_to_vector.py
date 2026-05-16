@@ -35,7 +35,7 @@ def simple_vector(text):
 
 
 def cosine(v1, v2):
-    common = set(v1.keys()) | set(v2.keys())
+    common = set(v1.keys()) & set(v2.keys())
 
     dot = sum(v1.get(k, 0) * v2.get(k, 0) for k in common)
 
@@ -107,7 +107,7 @@ def match(scraping_item, reporter_items):
 
     s_vec = simple_vector(get_scraping_text(scraping_item))
 
-    best_score = -1
+    best_score = 0
     best_match = None
 
     for r in reporter_items:
@@ -163,23 +163,33 @@ def save_result(result, status, reporter):
 # =========================================================
 
 def route(result):
-
     status = "verified" if result["score"] >= THRESHOLD else "rejected"
     now = datetime.utcnow().isoformat()
-
     reporter = result["reporter"]
 
     # ---------------- VERIFIED ----------------
     if status == "verified":
-        payload = reporter or {}
-        payload["status"] = "verified"
-        payload["updated_at"] = now
-        payload["operatorId"] = OPERATOR_ID
-        topic = SNS_VERIFIED
+        if not reporter:
+            
+            status = "rejected"
+            payload = {
+                "incident_id": result["incident_id"],
+                "status": "rejected",
+                "updated_at": now,
+                "operatorId": OPERATOR_ID
+            }
+            topic = SNS_REJECTED
+        else:
+            payload = dict(reporter)  # copy ไม่ mutate
+            payload["status"] = "verified"
+            payload["updated_at"] = now
+            payload["operatorId"] = OPERATOR_ID
+            topic = SNS_VERIFIED
 
     # ---------------- REJECTED ----------------
     else:
         payload = {
+            "incident_id": result["incident_id"],
             "status": "rejected",
             "updated_at": now,
             "operatorId": OPERATOR_ID
@@ -193,12 +203,9 @@ def route(result):
 
     save_result(result, status, reporter)
 
-    # =====================================================
-    # DELETE BOTH (ตาม requirement คุณ)
-    # =====================================================
     delete_scraping(result["incident_id"])
 
-    if reporter:
+    if status == "verified" and reporter:
         delete_reporter(reporter["incident_id"])
 
     return payload
@@ -221,6 +228,13 @@ def lambda_handler(event, context):
         result = match(scraping_item, reporter_items)
 
         responses.append(route(result))
+         # delete reporter are only if matched
+        if result["reporter"]:
+            matched_id = result["reporter"]["incident_id"]
+            reporter_items = [
+                r for r in reporter_items
+                if r["incident_id"] != matched_id
+            ]
 
     return {
         "statusCode": 200,
