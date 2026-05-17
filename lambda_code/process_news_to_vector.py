@@ -16,8 +16,8 @@ REPORTER_TABLE = dynamodb.Table("Incident_Reporter")
 SCRAPING_TABLE = dynamodb.Table("Disaster_Scraping")
 SUMMARY_TABLE = dynamodb.Table("Summary_In")
 
-SNS_VERIFIED = "arn:aws:sns:us-east-1:767398101278:incident-prioritization-topic"
-SNS_REJECTED = "arn:aws:sns:us-east-1:767398101278:status-changed-rejected-topic"
+SNS_VERIFIED = "arn:aws:sns:us-east-1:445880711982:incident-prioritization-topic"
+SNS_REJECTED = "arn:aws:sns:us-east-1:445880711982:change-rejected-status"
 
 THRESHOLD = 0.15
 OPERATOR_ID = "Trusted_News_Outlets_Service"
