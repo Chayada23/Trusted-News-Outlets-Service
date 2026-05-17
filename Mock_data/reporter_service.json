@@ -1,0 +1,22 @@
+{
+  "incident_id": "INC_0008",
+  "reporter_id": "9876543210987",
+  "incident_type": "STORM",
+  "severity": "HIGH",
+  "status": "REPORTED",
+
+  "description": "พายุฤดูร้อนพัดถล่มรุนแรง มีต้นไม้ขนาดใหญ่ล้มขวางถนน และป้ายโฆษณาพังเสียหายหลายจุด กำลังประสานงานกู้ภัย",
+
+  "addressName": "สวนจตุจักร, กรุงเทพมหานคร",
+  "location_id": ["LOC_BKK_001", "LOC_BKK_002"],
+
+  "incident_start": "2026-05-17T10:00:00Z",
+  "occured_time": "2026-05-17T09:50:00Z",
+  "created_at": "2026-05-17T10:30:00Z",
+
+  "ended_time": null,
+  "update_id": null,
+
+  "reportChannel": "mobile_app",
+  "reportCount": 1
+}

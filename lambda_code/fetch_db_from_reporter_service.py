@@ -15,25 +15,35 @@ def float_to_decimal(obj):
         return [float_to_decimal(i) for i in obj]
     return obj
 
-def build_reporter_item(data):
-    incident_id = data.get("incidentId")
+def remove_none(obj):
+    if isinstance(obj, dict):
+        return {k: remove_none(v) for k, v in obj.items() if v is not None}
+    elif isinstance(obj, list):
+        return [remove_none(i) for i in obj if i is not None]
+    return obj
 
-    return float_to_decimal({  # ← ครอบทั้ง item เลย ไม่ใช่แค่ location
+def build_reporter_item(data):
+    incident_id = data.get("incidentId") or data.get("incident_id")
+
+    item = {
         "incident_id":   incident_id,
         "incidentId":    incident_id,
         "description":   data.get("description", ""),
-        "incidentType":  data.get("incidentType", ""),
-        "addressName":   data.get("addressName", ""),
+        "incidentType":  data.get("incidentType") or data.get("incident_type", ""),
+        "addressName":   data.get("addressName") or data.get("address_name", ""),
         "location":      data.get("location", {
-                             "addressName": data.get("addressName", "")
+                             "addressName": data.get("addressName") or data.get("address_name", "")
                          }),
-        "reportChannel": data.get("reportChannel", ""),
-        "reportCount":   data.get("reportCount", 1),
-        "reporterId":    data.get("reporterId", ""),
-        "severity":      data.get("severity", ""),
+        "reportChannel": data.get("reportChannel") or data.get("report_channel", ""),
+        "reportCount":   data.get("reportCount") or data.get("report_count", 1),
+        "reporterId":    data.get("reporterId") or data.get("reporter_id", ""),
+        "severity":      data.get("severity"),
         "status":        data.get("status", "REPORTED"),
-        "updatedAt":     data.get("updatedAt", datetime.utcnow().isoformat()),
-    })
+        "updatedAt":     data.get("updatedAt") or data.get("updated_at",
+                             datetime.utcnow().isoformat()),
+    }
+
+    return float_to_decimal(remove_none(item))
 
 def save_reporter(item):
     if not item.get("incident_id"):
@@ -53,11 +63,6 @@ def lambda_handler(event, context):
                 continue
 
             data = json.loads(body["Message"])
-
-            # ป้องกัน severity เป็น None → DynamoDB ไม่รับ null string
-            if data.get("severity") is None:
-                data["severity"] = ""
-
             item = build_reporter_item(data)
             save_reporter(item)
 

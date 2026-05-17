@@ -16,8 +16,8 @@ REPORTER_TABLE = dynamodb.Table("Incident_Reporter")
 SCRAPING_TABLE = dynamodb.Table("Disaster_Scraping")
 SUMMARY_TABLE = dynamodb.Table("Summary_In")
 
-SNS_VERIFIED = "arn:aws:sns:us-east-1:445880711982:incident-prioritization-topic"
-SNS_REJECTED = "arn:aws:sns:us-east-1:445880711982:change-rejected-status"
+SNS_VERIFIED = "arn:aws:sns:us-east-1:445880711982:incident-prioritization-test-topic"
+SNS_REJECTED = "arn:aws:sns:us-east-1:445880711982:change-rejected-status-test-topic"
 
 THRESHOLD = 0.15
 OPERATOR_ID = "Trusted_News_Outlets_Service"
@@ -90,11 +90,17 @@ def get_scraping_text(item):
 # =========================================================
 
 def parse_scraping_item(data):
+    incident_id = data.get("incident_id", "").strip()
+    
+    if not incident_id:
+        raise ValueError(f"Missing incident_id: {data}")
+    
     return {
-        "incident_id": data.get("incident_id", ""),
+        "incident_id": incident_id,
         "description": data.get("description", ""),
-        "incident_type": data.get("incident_type", ""),
-        "location_id": data.get("location_id", []),
+        # รองรับทั้ง snake_case และ camelCase
+        "incident_type": data.get("incident_type") or data.get("incidentType", ""),
+        "location_id": data.get("location_id") or [data.get("addressName", "")],
         "severity": data.get("severity", ""),
         "status": data.get("status", "")
     }
@@ -130,15 +136,22 @@ def match(scraping_item, reporter_items):
 # =========================================================
 
 def delete_scraping(incident_id):
-    SCRAPING_TABLE.delete_item(
-        Key={"incident_id": incident_id}
-    )
+    try:
+        SCRAPING_TABLE.delete_item(
+            Key={"incident_id": incident_id}
+        )
+    except Exception as e:
+        print(f"[WARN] delete_scraping failed: {e}")
 
 
 def delete_reporter(incident_id):
-    REPORTER_TABLE.delete_item(
-        Key={"incident_id": incident_id}
-    )
+    try:
+        REPORTER_TABLE.delete_item(
+            Key={"incident_id": incident_id}
+        )
+    except Exception as e:
+        print(f"[WARN] delete_reporter failed: {e}")
+    
 
 # =========================================================
 # SAVE SUMMARY
@@ -163,36 +176,46 @@ def save_result(result, status, reporter):
 # =========================================================
 
 def route(result):
-    status = "verified" if result["score"] >= THRESHOLD else "rejected"
-    now = datetime.utcnow().isoformat()
     reporter = result["reporter"]
+    now = datetime.utcnow().isoformat()
+
+    # default
+    status = "VERIFIED" if result["score"] >= THRESHOLD else "REJECTED"
 
     # ---------------- VERIFIED ----------------
-    if status == "verified":
+    if status == "VERIFIED":
+
+        # no reporter -> reject
         if not reporter:
-            status = "rejected"
+            status = "REJECTED"
+
             payload = {
                 "incident_id": result["incident_id"],
-                "status": "rejected",
+                "status": status,
                 "updated_at": now,
                 "operatorId": OPERATOR_ID
             }
+
             topic = SNS_REJECTED
+
         else:
             payload = dict(reporter)
-            payload["status"] = "verified"
+
+            payload["status"] = status
             payload["updated_at"] = now
             payload["operatorId"] = OPERATOR_ID
+
             topic = SNS_VERIFIED
 
     # ---------------- REJECTED ----------------
     else:
         payload = {
             "incident_id": result["incident_id"],
-            "status": "rejected",
+            "status": status,
             "updated_at": now,
             "operatorId": OPERATOR_ID
         }
+
         topic = SNS_REJECTED
 
     sns.publish(
@@ -202,7 +225,7 @@ def route(result):
 
     save_result(result, status, reporter)
 
-    delete_scraping(result["incident_id"])
+   # delete_scraping(result["incident_id"])
 
     # delete reporter both if verified or rejected (only if matched)
     if reporter:
@@ -217,18 +240,31 @@ def route(result):
 def lambda_handler(event, context):
 
     reporter_items = fetch_reporters()
-
     responses = []
 
     for record in event["Records"]:
 
-        scraping_raw = json.loads(record["body"])
+        # รองรับทั้ง SQS และ source อื่น
+        if "body" not in record:
+            print(f"[SKIP] No body in record: {record}")
+            continue
+
+        body = json.loads(record["body"])
+
+        # แกะ SNS envelope
+        if body.get("Type") == "Notification":
+            scraping_raw = json.loads(body["Message"])
+        else:
+            scraping_raw = body
+
+        if not scraping_raw.get("incident_id", "").strip():
+            print(f"[SKIP] Missing incident_id: {scraping_raw}")
+            continue
+
         scraping_item = parse_scraping_item(scraping_raw)
-
         result = match(scraping_item, reporter_items)
-
         responses.append(route(result))
-         # delete reporter are only if matched
+
         if result["reporter"]:
             matched_id = result["reporter"]["incident_id"]
             reporter_items = [
