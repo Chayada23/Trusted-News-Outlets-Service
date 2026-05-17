@@ -69,10 +69,32 @@ def fetch_reporters():
 # =========================================================
 
 def get_reporter_text(item):
+
+    def to_str(val):
+        if isinstance(val, dict):
+            return val.get("S", "")
+        return str(val) if val else ""
+
     return " ".join([
-        item.get("description", ""),
-        item.get("incidentType", ""),
-        item.get("addressName", "")
+        to_str(item.get("description", "")),
+        to_str(item.get("incidentType", "")),
+        to_str(item.get("addressName", ""))
+    ])
+
+
+def get_scraping_text(item):
+    
+    def to_str(val):
+        if isinstance(val, dict):
+            return val.get("S", "")
+        return str(val) if val else ""
+
+    location_text = " ".join(to_str(loc) for loc in item.get("location_id", []))
+
+    return " ".join([
+        to_str(item.get("description", "")),
+        to_str(item.get("incident_type", "")),
+        location_text
     ])
 
 
@@ -90,17 +112,28 @@ def get_scraping_text(item):
 # =========================================================
 
 def parse_scraping_item(data):
-    incident_id = data.get("incident_id", "").strip()
-    
+    incident_id = data.get("incident_id", "")
+    if isinstance(incident_id, dict):
+        incident_id = incident_id.get("S", "")
+    incident_id = str(incident_id).strip()
+
     if not incident_id:
         raise ValueError(f"Missing incident_id: {data}")
-    
+
+    # ✅ แก้ location_id ให้เป็น list of string เสมอ
+    raw_location = data.get("location_id") or [data.get("addressName", "")]
+    location_id = []
+    for loc in raw_location:
+        if isinstance(loc, dict):
+            location_id.append(loc.get("S", ""))  # DynamoDB format
+        else:
+            location_id.append(str(loc))
+
     return {
         "incident_id": incident_id,
         "description": data.get("description", ""),
-        # รองรับทั้ง snake_case และ camelCase
         "incident_type": data.get("incident_type") or data.get("incidentType", ""),
-        "location_id": data.get("location_id") or [data.get("addressName", "")],
+        "location_id": location_id,
         "severity": data.get("severity", ""),
         "status": data.get("status", "")
     }
@@ -219,9 +252,9 @@ def route(result):
         topic = SNS_REJECTED
 
     sns.publish(
-        TopicArn=topic,
-        Message=json.dumps(payload, default=str)
-    )
+    TopicArn=topic,
+    Message=json.dumps(payload, default=str, ensure_ascii=False)  # ensure_ascii=False
+)
 
     save_result(result, status, reporter)
 
@@ -257,7 +290,12 @@ def lambda_handler(event, context):
         else:
             scraping_raw = body
 
-        if not scraping_raw.get("incident_id", "").strip():
+        # ✅ ต้องอยู่ใน for loop (indent ให้ตรงกับบรรทัดข้างบน)
+        incident_id = scraping_raw.get("incident_id", "")
+        if isinstance(incident_id, dict):
+            incident_id = incident_id.get("S", "")
+
+        if not str(incident_id).strip():
             print(f"[SKIP] Missing incident_id: {scraping_raw}")
             continue
 
