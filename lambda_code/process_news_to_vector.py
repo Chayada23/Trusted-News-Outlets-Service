@@ -56,7 +56,7 @@ def get_reporter_text(item):
         to_str(item.get("addressName", ""))
     ])
 
-# เหลืออันเดียว ลบซ้ำออก
+
 def get_scraping_text(item):
     location_text = " ".join(to_str(loc) for loc in item.get("location_id", []))
     return " ".join([
@@ -162,7 +162,7 @@ def route(result):
         }
         topic = SNS_REJECTED
 
-    # indent ถูกต้อง
+    # indent for readability, ensure_ascii=False for Thai characters
     sns.publish(
         TopicArn=topic,
         Message=json.dumps(payload, default=str, ensure_ascii=False)

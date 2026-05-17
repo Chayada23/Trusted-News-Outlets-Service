@@ -38,6 +38,7 @@ def build_reporter_item(data):
         "reportCount":   data.get("reportCount") or data.get("report_count", 1),
         "reporterId":    data.get("reporterId") or data.get("reporter_id", ""),
         "severity":      data.get("severity"),
+        "affected_count":data.get("affected_count"),
         "status":        data.get("status", "REPORTED"),
         "updatedAt":     data.get("updatedAt") or data.get("updated_at",
                              datetime.utcnow().isoformat()),
